@@ -49,6 +49,7 @@ import graphics.scenery.controls.InputHandler;
 import graphics.scenery.controls.OpenVRHMD;
 import graphics.scenery.controls.TrackerInput;
 import graphics.scenery.controls.behaviours.ArcballCameraControl;
+import graphics.scenery.controls.behaviours.StickyYArcballCameraControl;
 import graphics.scenery.controls.behaviours.FPSCameraControl;
 import graphics.scenery.controls.behaviours.MovementCommand;
 import graphics.scenery.controls.behaviours.SelectCommand;
@@ -151,9 +152,10 @@ public class SciView extends SceneryBase implements CalibratedRealInterval<Calib
     public static final ColorRGB DEFAULT_COLOR = Colors.LIGHTGRAY;
     private final SceneryPanel[] sceneryPanel = { null };
     /**
-     * Mouse controls for FPS movement and Arcball rotation
+     * Mouse controls for FPS movement and Arcball(s) rotation
      */
     protected ArcballCameraControl targetArcball;
+    protected StickyYArcballCameraControl targetStickyYArcball;
     protected FPSCameraControl fpsControl;
     /**
      * The floor that orients the user in the scene
@@ -907,14 +909,45 @@ public class SciView extends SceneryBase implements CalibratedRealInterval<Calib
         targetArcball.setMaximumDistance( Float.MAX_VALUE );
         targetArcball.setMouseSpeedMultiplier( mouseSpeed );
         targetArcball.setScrollSpeedMultiplier( 0.05f );
-        targetArcball.setDistance( getCamera().getPosition().sub( target ).length() );
 
-        // FIXME: Swing seems to have issues with shift-scroll actions, so we change
-		//  this to alt-scroll here for the moment.
+        targetStickyYArcball = new StickyYArcballCameraControl( "mouse_control_arcball", cameraSupplier,
+                getRenderer().getWindow().getWidth(),
+                getRenderer().getWindow().getHeight(), target );
+        targetStickyYArcball.setMaximumDistance( Float.MAX_VALUE );
+        targetStickyYArcball.setMouseSpeedMultiplier( mouseSpeed );
+        targetStickyYArcball.setScrollSpeedMultiplier( 0.05f );
+
         h.addBehaviour( "mouse_control_arcball", targetArcball );
         h.addKeyBinding( "mouse_control_arcball", "shift button1" );
         h.addBehaviour( "scroll_arcball", targetArcball );
         h.addKeyBinding( "scroll_arcball", "shift scroll" );
+
+        h.addBehaviour("mouse_arcball mode switch", new ArcBallSwitcher());
+        h.addKeyBinding("mouse_arcball mode switch", "ctrl shift A Y");
+    }
+
+    private class ArcBallSwitcher implements ClickBehaviour
+    {
+        @Override
+        public void click(int x, int y) {
+            final InputHandler h = getInputHandler();
+            if (h.getBehaviour("mouse_control_arcball") == targetArcball)
+            {
+                getLogger().info("Switching ArcBall CamControl to sticky-y-axis mode");
+                h.removeBehaviour("mouse_control_arcball");
+                h.addBehaviour("mouse_control_arcball", targetStickyYArcball);
+                h.removeBehaviour("scroll_arcball");
+                h.addBehaviour("scroll_arcball", targetStickyYArcball);
+            }
+            else
+            {
+                getLogger().info("Switching ArcBall CamControl to standard mode");
+                h.removeBehaviour("mouse_control_arcball");
+                h.addBehaviour("mouse_control_arcball", targetArcball);
+                h.removeBehaviour("scroll_arcball");
+                h.addBehaviour("scroll_arcball", targetArcball);
+            }
+        }
     }
 
     /*
@@ -1412,6 +1445,7 @@ public class SciView extends SceneryBase implements CalibratedRealInterval<Calib
         if( activeNode == n ) return activeNode;
         activeNode = n;
         targetArcball.setTarget( n == null ? () -> new Vector3f( 0, 0, 0 ) : () -> n.getMaximumBoundingBox().getBoundingSphere().getOrigin());
+        targetStickyYArcball.setTarget( n == null ? () -> new Vector3f( 0, 0, 0 ) : () -> n.getMaximumBoundingBox().getBoundingSphere().getOrigin());
         eventService.publish( new NodeActivatedEvent( activeNode ) );
 
         return activeNode;
@@ -2042,7 +2076,7 @@ public class SciView extends SceneryBase implements CalibratedRealInterval<Calib
         getRenderer().setPushMode( push );
         return getRenderer().getPushMode();
     }
-    
+
     public ArcballCameraControl getTargetArcball() {
         return targetArcball;
     }
